@@ -47,11 +47,11 @@ import com.hippo.ehviewer.util.Crash
 import com.hippo.ehviewer.util.FavouriteStatusRouter
 import com.hippo.ehviewer.util.FileUtils
 import com.hippo.ehviewer.util.ReadableTime
-import com.hippo.ehviewer.util.isAtLeastP
 import com.hippo.ehviewer.util.isAtLeastQ
 import com.hippo.ehviewer.util.isCronetSupported
 import eu.kanade.tachiyomi.network.interceptor.CloudflareInterceptor
 import eu.kanade.tachiyomi.util.lang.launchIO
+import eu.kanade.tachiyomi.util.lang.withUIContext
 import kotlinx.coroutines.launch
 import moe.tarsin.kt.unreachable
 import okhttp3.AsyncDns
@@ -65,10 +65,6 @@ private val lifecycleScope = lifecycle.coroutineScope
 
 class EhApplication : Application(), ImageLoaderFactory {
     override fun onCreate() {
-        // Initialize Settings on first access
-        lifecycleScope.launchIO {
-            AppCompatDelegate.setDefaultNightMode(Settings.theme)
-        }
         lifecycle.addObserver(lockObserver)
         val handler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { t, e ->
@@ -81,17 +77,21 @@ class EhApplication : Application(), ImageLoaderFactory {
             handler?.uncaughtException(t, e)
         }
         super.onCreate()
-        if (isAtLeastP) {
-            System.loadLibrary("ehviewer")
-        }
+        System.loadLibrary("ehviewer")
         System.loadLibrary("ehviewer_rust")
         ReadableTime.initialize(this)
+        lifecycleScope.launchIO {
+            val theme = Settings.theme
+            withUIContext {
+                AppCompatDelegate.setDefaultNightMode(theme)
+            }
+        }
         lifecycleScope.launchIO {
             launchIO {
                 migrateCookies()
             }
             launchIO {
-                EhTagDatabase
+                EhTagDatabase.update()
             }
             launchIO {
                 EhDB
@@ -150,9 +150,7 @@ class EhApplication : Application(), ImageLoaderFactory {
             } else {
                 callFactory(baseOkHttpClient)
             }
-            if (isAtLeastP) {
-                add { result, options, _ -> ImageDecoderDecoder(result.source, options, false) }
-            }
+            add { result, options, _ -> ImageDecoderDecoder(result.source, options, false) }
             add(MergeInterceptor)
         }
         diskCache(imageCache)
